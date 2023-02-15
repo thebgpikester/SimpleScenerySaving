@@ -1,32 +1,42 @@
 --Pikey's Simple Scenery Saving & Tools script.
---thebgpikester@hotmail.com 29/11/2019
---You may use this how you like but I must be credited. If I find usage where no credit is obvious, I will remove you from
---my christmas card list and target you preferentially above others when sorting at the MELD.
+--thebgpikester@hotmail.com 29/11/2019, updated Feb 2023
+
+--DESCRIPTION:
+--This script can help you use scenery in your missions by tracking what got blown up and copying that at the start of the next mission post restart. 
+--This script can also capture coordinates at point and the scenery id which is helpful in mission building and design.
+--You can go through a map and click on scenery in the game world and test to see if it blows up correctly, what ID and description it has and even build a file of target lists
+--   [129337049]="129337049,tgt Control Tower appears like a KDP, MGRS 37T GG 37237 46133, LL DDM 041° 55.891'N   041° 51.683'E, LL DMS 041°55'53.490\"N 041°51'40.988\"E, ALT 18 METRES\
+-- the number is the id, you can use this with a "dead event".
+--tgt Control Tower is the text entered to the markpoint
+-- "Appears like a "...
+-- "KDP" is the model name in game, often is in Russian (hence we need a free text comment)
+-- Coordinates in MGRS, DDM, DMS and altitude
 
 --REQUIRES:
---MOOSE DEV from November 2019
---You must de sanitise the missionscripting.lua If you do not know how to do this, I don't wish to explain it until 
---you have researched and understand the consequences of that action. Generally it's commonly used on servers and no issue.
+--MOOSE (any version post 2019)
+--You must de sanitise the missionscripting.lua because the script will need to write a file full of scenery for the persistence between misison restarts
 
---USAGE:
---Run a mission with mosse and this script loaded
---Create a markpoint with
---"" nothing - will create an explosion at the location when you delete the markpoint
---"tgt" + free text. Will create an entry in sceneryTgtList.lua for use later. No data validation is done so dont put a comma if building CSV's
---"coord" will provide a MOOSE CORDINATE text rpelacing the marklpoint for other usage.
+--MISSION PLAY USAGE:
+--You want to Persist your dead scenery (Read second use case for identifying scenery and tools)
+--Run a mission with MOOSE and this script loaded
+--Do nothing else, play as normal. If any scenery is destroyed it is recorded in a file in your DCS directory called
+--SceneryPersistence.lua
+--This file contains a list of coordinates where scenery was destroyed. At the start of the next mission, assuming the file is intact and this script is run
+--the scenery is blown up again by going through those coordinates and creating an explosion. Some may have optional smoke added.
+
+--TOOLS USAGE:
+--You want to record scenery locations for briefings and such. When the mission is running, open the F10 map and create a Markpoint on a scenery object
+--You can create 3 different types of markpoints
+--empty - if you create a markpoint with no text in it, by default it will create an explosion at the location when you delete the markpoint. 
+--This is useful for seeing how the scenery explodes or if at all, since some buildings are immortal for reasons known to ED. 
+--"tgt" + text. Will create an entry in a file in your DCS directory called 'sceneryTgtList.lua' for use later. The free text after the target should describe the building so you can refer to it later
+--No data validation is done so dont put a comma if building CSV's
+--"coord". When you delete a markpoint with "coord" written in it, a new replacement markpoint will appear with the model name, MGRS coordinates and altitude
 
 --PRODUCTION SERVER
---Comment out the bottom half of this script so users dont use the tools when in production
---check out the line 261 for handling actions when matching against your list
+--Comment out the bottom half of this script if you don't want users to have access to the tools like exploding markpoints.
 
---OPTIONAL:
---I've commented the csv creation out. Use it if you want a CSV. If you got to here and can still read, you
---wont have any problems readjusting the CSV format.
-
-
-
-csvFilePath = "E:\\DCS World OpenBeta\\db.csv" --edit this to represent your own (DCS cant write to different disks)
-
+--SCRIPT
 --http://lua-users.org/wiki/SaveTableToFile
 
    local function exportstring( s )
@@ -217,7 +227,6 @@ end
 --SCRIPT
 -----------------------------------------------
 
-
 maxSceneryCount = 500
 
 --CHECKING FOR PREVIOUS FILE OF ALL DESTROYED SCENERY
@@ -246,8 +255,6 @@ else
 end
 
 
-
-
 EH = EVENTHANDLER:New()
 EH:HandleEvent( EVENTS.Dead ) --this is a popular handler. Ensure you do not duplicate.
 
@@ -257,39 +264,19 @@ function EH:OnEventDead( EventData )
           table.insert(scenery,coord)
           --we check the event scenery that died against the file of items we built
             if table_has_key(savedSceneryTbl, EventData.IniUnitName) == true then --items below this line will execute when finding the item on the list
-              savedSceneryTbl[EventData.IniUnitName]=nil --add date?
-             --MESSAGE:New("You destroyed the target!", 20):ToAll()
-             --uncomment above if you want a custom message
+              savedSceneryTbl[EventData.IniUnitName]=nil 
             end
           end
 end
 
 
-
 SCHEDULER:New( nil, function()
-table.save(scenery, "sceneryPersistence.lua")--this is scenery persistence, nothing to do with targets
---env.info(#savedSceneryTbl .." targets left")
-
-
---The section below creates a CSV file from the table. This is optional and I've commented it out. It might be useful to you if
---you use CSV's for something to do with databases/web
-
-
---[[
-local data="ID,DESCRIPTION,MGRS,DDM,DMS,ALT,LINK\n"
-os.remove(csvFilePath) --delete entire thing because finding file lines is more complex for me and all we do is delete an entry at a time
- writeCSV(data,csvFilePath) 
- for k,v in pairs (savedSceneryTbl) do
-  writeCSV(v,csvFilePath)
- end
---]]
-
-end, {},2, 20)
+table.save(scenery, "sceneryPersistence.lua")
+end, {},2, 20)--saves every 20s
 ------------------------------------------
---END OF PRODUCTION SCRIPT
+--END OF PERSISTENCE SCRIPT
 ------------------------------------------
 --COMMENT OUT THE REMAINDER FOR PRODUCTION
-------------------------------------------
 ------------------------------------------
 ------------------------------------------
 
@@ -312,17 +299,14 @@ for index, SceneryID in pairs(scenerytable) do
         local MarkID = scenCoord:MarkToAll(  SceneryObject:GetName() .. "   " .. scenCoord:ToStringMGRS() .. " ALT " .. round(scenCoord:GetLandHeight(),0) .. " M" )
         savedSceneryTbl[SceneryID.id_]=SceneryID.id_..","..text.." appears like a " ..SceneryObject:GetName() .. ", ".. scenCoord:ToStringMGRS() ..", " .. scenCoord:ToStringLLDDM() .. ", " .. scenCoord:ToStringLLDMS() .. ", ALT " .. round(scenCoord:GetLandHeight(),0) .. " METRES\n" 
       end
-
 end
 
 
 MESSAGE:New("Found ".. count .." scenery items within " .. radius .. " Metres",20):ToAll()
-radius=nil
+  radius=nil
 end
 
-
-
-
+--MARKER EVENTS
 EH1 = EVENTHANDLER:New()
 EH1:HandleEvent(EVENTS.MarkRemoved)
 
@@ -342,15 +326,10 @@ function EH1:OnEventMarkRemoved(EventData)
 
 
 function explode(coord, markID)
-
          coord:Explosion(5400)
 end
 
-
-
-
 function coords(coord, markID)
-
          local _MarkID = coord:MarkToAll("changeMe = COORDINATE:New("..coord.x..", "..coord.y..", "..coord.z..")")
 end
 
